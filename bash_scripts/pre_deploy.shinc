@@ -1,0 +1,56 @@
+function install_terraform() {
+  log_msg "Installing Terraform"
+  log_msg "Downloading Terraform"
+  curl -sLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_${KERNEL_NAME}_amd64.zip"
+  log_msg "Extracting Terraform"
+  gunzip -S "_${TERRAFORM_VERSION}_${KERNEL_NAME}_amd64.zip" terraform_${TERRAFORM_VERSION}_${KERNEL_NAME}_amd64.zip
+  chmod +x terraform
+  id -a | grep -i 'uid=0' &> /dev/null
+  [[ "${?}" -ne 0 ]] && sudo mv -f terraform /usr/local/bin/ || mv -f terraform /usr/local/bin/
+  log_msg "Terraform installed with success"
+}
+
+function install_kubectl() {
+  id -a | grep -i 'uid=0' &> /dev/null
+  if [[ "${?}" -ne 0 ]]; then
+    log_msg "Installing kubectl"
+    log_msg "Downloading kubectl"
+    curl -sL -o /usr/local/bin/kubectl https://amazon-eks.s3-us-west-2.amazonaws.com/1.13.7/2019-06-11/bin/${KERNEL_NAME}/amd64/kubectl
+    chmod +x /usr/local/bin/kubectl
+  else
+    sudo curl -sL -o /usr/local/bin/kubectl https://amazon-eks.s3-us-west-2.amazonaws.com/1.13.7/2019-06-11/bin/${KERNEL_NAME}/amd64/kubectl
+    sudo chmod +x /usr/local/bin/kubectl
+  fi
+  log_msg "kubectl installed with success"
+}
+
+function install_helm() {
+  log_msg "Installing helm"
+  log_msg "Downloading helm"
+  curl -sL https://get.helm.sh/helm-v2.14.2-${KERNEL_NAME}-amd64.tar.gz | tar xz
+  id -a | grep -i 'uid=0' &> /dev/null
+  if [[ "${?}" -ne 0 ]]; then
+    ls -l "${KERNEL_NAME}-amd64/" | awk '/-rwx/{ print $9 }' | xargs -I{} mv "${KERNEL_NAME}-amd64/{}" /usr/local/bin/{}
+  else
+    ls -l "${KERNEL_NAME}-amd64/" | awk '/-rwx/{ print $9 }' | xargs -I{} sudo mv "${KERNEL_NAME}-amd64/{}" /usr/local/bin/{}
+  fi
+  rm -rf ${KERNEL_NAME}-amd64/
+  log_msg "helm installed with success"
+}
+
+function check_prereqs() {
+  grep -i '\[default]' "${AWS_SHARED_CREDENTIALS_FILE}" &> /dev/null
+  if [[ "${?}" -ne 0 && -z "${AWS_SECRET_ACCESS_KEY// /}" && -z "${AWS_ACCESS_KEY_ID// /}" ]] ; then
+    log_msg "Please, define your AWS tokens (access and secret keys)"
+    exit 1
+  fi
+
+  terraform version &> /dev/null
+  [[ "${?}" -ne 0 ]] && install_terraform
+
+  kubectl --help &> /dev/null
+  [[ "${?}" -ne 0 ]] && install_kubectl
+
+  helm --help &> /dev/null
+  [[ "${?}" -ne 0 ]] && install_helm
+}

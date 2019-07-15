@@ -1,0 +1,57 @@
+function generate_ssh_key() {
+  if [[ ! -f "${TF_VAR_ssh_key_path}/${TF_VAR_ssh_key_name}" ]]; then
+    log_msg "Generating your ssh private and public keys"
+    local -r SSH_KEY_PASSWORD="$(head -n 1 /dev/urandom | base64 | tr -dc '[:alnum:]' | cut -c -24)"
+    ssh-keygen -t rsa -b 1024 -C "AWS EC2 key - EKS Workers" -f "${TF_VAR_ssh_key_path}/${TF_VAR_ssh_key_name}" -N "${SSH_KEY_PASSWORD}"
+    log_msg "The password for your ssh private key is: ${SSH_KEY_PASSWORD}"
+  fi
+}
+
+function terraform_deploy() {
+  set -e
+  generate_ssh_key
+  log_msg "Runnning terraform init"
+  terraform init
+  log_msg "Running terraform plan -var aws_region=${AWS_REGION} -var cluster_name=${CLUSTER_NAME} -out deploy_eks.tfstate"
+  local -r TERRAFORM_PLAN="$(terraform plan -var aws_region=${AWS_REGION} -var cluster_name=${CLUSTER_NAME} -out deploy_eks.tfstate)"
+  log_msg "${TERRAFORM_PLAN}"
+  set +e ; grep -i 'Plan\:' <<< "$TERRAFORM_PLAN" &> /dev/null
+  if [[ "${?}" -eq 0 ]]; then
+    set -e
+    log_msg "Deploying AWS EKS stack"
+    log_msg "Running terraform apply -auto-approve \"deploy_eks.tfstate\""
+    terraform apply -auto-approve "deploy_eks.tfstate"
+    sleep 15s
+    set +e
+  else
+    log_msg "No changes to apply"
+  fi
+}
+
+function terraform_clean() {
+  log_msg "Cleaning all terraform files"
+  rm -rf .terraform *.tfstate{,.backup}
+}
+
+function terraform_destroy() {
+  log_msg "Destroying AWS EKS Stack"
+  terraform destroy -var aws_region=${AWS_REGION} -var cluster_name=${CLUSTER_NAME}
+  [[ "${?}" -eq 0 ]] && terraform_clean
+}
+
+function terraform_write_output() {
+  terraform output config_map_aws_auth | tee "${CONFIG_DIR}/config_map_aws_auth.yaml"
+  log_msg "Waiting for the nodes"
+  declare -a K8S_NODES=($(kubectl get nodes -o json | jq -r '.items[] | select(.status.conditions[].reason=="KubeletReady").metadata.name + "__" +( .status.conditions[] | select(.reason=="KubeletReady").type )'))
+  declare -i RETRIES=10
+  while ((RETRIES--)); do
+    if [[ $(awk '{print split($0, a)}' <<< "${K8S_NODES[@]//*__Ready/}") -ne 0 ]] ; then
+      echo "Waiting for nodes to be ready ${K8S_NODES[@]//*__Ready/}"
+      sleep 15s
+      declare -a K8S_NODES=($(kubectl get nodes -o json | jq -r '.items[] | select(.status.conditions[].reason=="KubeletReady").metadata.name + "__" +( .status.conditions[] | select(.reason=="KubeletReady").type )'))
+    else
+      echo "All node are running"
+      break
+    fi
+  done
+}

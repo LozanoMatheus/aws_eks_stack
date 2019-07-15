@@ -1,0 +1,61 @@
+function setup_kubectl() {
+  log_msg "Setting up kubectl"
+  aws sts get-caller-identity
+  aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
+  [[ "${?}" -eq 0 ]] && log_msg "kubectl configured with success" || log_msg "kubectl configured with erro!!!"
+}
+
+function setup_helm() {
+  log_msg "Setting up helm"
+  kubectl -n kube-system create serviceaccount tiller
+  kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller
+  helm init --service-account tiller
+  [[ "${?}" -eq 0 ]] && log_msg "helm configured with success" || log_msg "helm configured with erro!!!"
+}
+
+function delete_apps() {
+  log_msg "Deleting all services"
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0-beta1/aio/deploy/recommended.yaml && sleep 5s
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/influxdb/heapster.yaml && sleep 5s
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/influxdb/influxdb.yaml && sleep 5s
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/rbac/heapster-rbac.yaml && sleep 5s
+  # ls ${CONFIG_DIR}/kubectl_*.yaml | xargs -I{} bash -c "kubectl delete -f {} && sleep 5s"
+}
+
+function deploy_apps() {
+  helm install charts/nginx --name mlozano-nginx
+}
+
+function setup_cluster() {
+
+  log_msg "Creating users"
+  kubectl apply -f "${CONFIG_DIR}/config_map_aws_auth.yaml"
+  kubectl apply -f "${CONFIG_DIR}/dashboard_users.yaml"
+
+  log_msg "Deploying Kubernetes Dashboard"
+  helm install stable/kubernetes-dashboard --name k8s-dashboard \
+    --set=service.externalPort=8080,resources.limits.cpu=200m \
+    -f charts/kubernetes-dashboard/values.yaml \
+    --set rbac.create=true \
+    --namespace=kube-system
+
+  # helm upgrade mlozano stable/kubernetes-dashboard \
+  #   --set=service.externalPort=8080,resources.limits.cpu=200m \
+  #   --set image.tag="v2.0.0-beta1" \
+  #   --set rbac.create=true \
+  #   -f charts/kubernetes-dashboard/values.yaml \
+  #   --namespace=kube-system
+
+  # log_msg "Creating certificate for kubernetes-dashboard"
+  # openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout ../keys/k8s-dashboard.key -out ../keys/k8s-dashboard.crt \
+  #   -subj "/C=NL/ST=Rotterdam/L=Rotterdam/O=Lozano/OU=DevOps/CN=DevOps/emailAddress=dev@ops.sre"
+  # kubectl create secret generic kubernetes-dashboard-certs --from-file=../keys/k8s-dashboard.crt -n kube-system
+
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0-beta1/aio/deploy/recommended.yaml && sleep 5s
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/influxdb/heapster.yaml && sleep 5s
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/influxdb/influxdb.yaml && sleep 5s
+  # kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/rbac/heapster-rbac.yaml && sleep 5s
+  # ls ../config_files/kubectl_*.yaml | xargs -I{} bash -c "kubectl apply -f {} && sleep 5s"
+}
