@@ -31,10 +31,17 @@ function terraform_deploy() {
 function terraform_clean() {
   log_msg "Cleaning all terraform files"
   rm -rf .terraform *.tfstate{,.backup}
+  [[ $? -ne 0 ]] && error_exit "Fail to delete terraform files" || true
 }
 
 function terraform_destroy() {
   log_msg "Destroying AWS EKS Stack"
+  local -r CHECK_HELM_RELEASE="$(helm list -q | wc -l)"
+  if [[ "${CHECK_HELM_RELEASE// /}" -ne 0 ]]; then
+    log_msg "Deleting all HELM release"
+    helm delete --purge $(helm list -q) || error_exit "Fail to delete helm release"
+    sleep 30s
+  fi
   terraform destroy -var aws_region=${AWS_REGION} -var cluster_name=${CLUSTER_NAME}
   [[ "${?}" -eq 0 ]] && terraform_clean
 }
@@ -54,4 +61,21 @@ function terraform_write_output() {
       break
     fi
   done
+}
+
+function terraform_wait_nodes() {
+  log_msg "Waiting for the nodes"
+  declare -a K8S_NODES=($(kubectl get nodes -o json | jq -r '.items[] | select(.status.conditions[].reason=="KubeletReady").metadata.name + "__" +( .status.conditions[] | select(.reason=="KubeletReady").type )'))
+  declare -i NODES_RETRIES=${RETRIES}
+  while ((NODES_RETRIES--)); do
+    if [[ $(awk '{print split($0, a)}' <<< "${K8S_NODES[@]//*__Ready/}") -ge 1 ]] ; then
+      log_msg "Waiting for nodes to be ready ${K8S_NODES[@]//*__Ready/}"
+      sleep 15s
+      declare -a K8S_NODES=($(kubectl get nodes -o json | jq -r '.items[] | select(.status.conditions[].reason=="KubeletReady").metadata.name + "__" +( .status.conditions[] | select(.reason=="KubeletReady").type )'))
+    else
+      log_msg "At least one node is running"
+      break
+    fi
+  done
+  [[ ${NODES_RETRIES} -le 0 ]] && error_exit "Don't have any node running"
 }
