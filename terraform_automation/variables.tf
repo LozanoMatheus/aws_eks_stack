@@ -1,6 +1,6 @@
 variable "cluster_name" {
   description = "Cluster name"
-  type    = "string"
+  type        = "string"
 }
 
 variable "eks_version" {
@@ -17,7 +17,6 @@ variable "aws_region" {
 
 variable "instance_type" {
   description = "AWS EC2 instance type for workers"
-  default = "t3.micro"
 }
 
 variable "ssh_key_name" {
