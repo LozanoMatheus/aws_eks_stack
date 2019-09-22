@@ -1,0 +1,8 @@
+function log_msg() {
+  echo "$(date +'%Y-%m-%d %T')" $@ | tee -a "${LOG_FILE}"
+}
+
+function error_exit() {
+  log_msg "${1}"
+  exit 1
+}
