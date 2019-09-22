@@ -1,0 +1,122 @@
+function deploy_apps() {
+  [[ ! -z ${@} ]] && { echo "${@}" | xargs -I{} -n1 bash -c "deploy_{}" ; return ; }
+  deploy_letsencrypt
+  deploy_ingress
+  # deploy_dns_a_records ## TODO - Convert it to AWS Route53
+  deploy_joomla
+  deploy_k8s_dashboard
+  deploy_autoscaler
+}
+
+function deploy_letsencrypt() {
+  log_msg "Deploying Let's Encrypt / Cert Manager"
+  helm repo add jetstack https://charts.jetstack.io
+  kubectl create namespace cert-manager
+  kubectl label namespace cert-manager certmanager.k8s.io/disable-validation=true
+  kubectl apply -f https://raw.githubusercontent.com/jetstack/cert-manager/release-0.8/deploy/manifests/00-crds.yaml
+  kubectl create -f "${CONFIG_DIR}/letsencrypt-prod.yaml"
+  helm install --name cert-manager --namespace cert-manager --version v0.8.1 jetstack/cert-manager \
+    --set ingressShim.defaultIssuerName=letsencrypt-prod \
+    --set ingressShim.defaultIssuerKind=ClusterIssuer
+  [[ $? -eq 0 ]] && log_msg "Let's Encrypt / Cert Manager deployed with success" || error_exit "Fail to deploy Let's Encrypt / Cert Manager"
+  sleep 15s ; kubectl -n cert-manager autoscale deployment cert-manager            --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
+  sleep 15s ; kubectl -n cert-manager autoscale deployment cert-manager-cainjector --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
+  sleep 15s ; kubectl -n cert-manager autoscale deployment cert-manager-webhook    --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
+}
+
+function deploy_ingress() {
+  log_msg "Deploying Ingress"
+  helm install --name ingress stable/nginx-ingress
+  [[ $? -eq 0 ]] && log_msg "Ingress deployed with success" || error_exit "Fail to deploy Ingress"
+  sleep 15s ; kubectl -n default autoscale deployment ingress-nginx-ingress-controller      --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
+  sleep 15s ; kubectl -n default autoscale deployment ingress-nginx-ingress-default-backend --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
+}
+
+function deploy_check_public_ip() {
+  log_msg "Waiting for the public IP"
+  declare -g INGRESS_PUBLIC_IP="$(kubectl get svc ingress-nginx-ingress-controller -o jsonpath="{.status.loadBalancer.ingress[0].ip}")"
+  declare -i PUBLIC_IP_RETRIES=${RETRIES}
+  while ((PUBLIC_IP_RETRIES--)); do
+    if [[ -z ${INGRESS_PUBLIC_IP// /} ]] ; then
+      log_msg "Waiting for the public IP"
+      sleep 15s
+      declare -g INGRESS_PUBLIC_IP="$(kubectl get svc ingress-nginx-ingress-controller -o jsonpath="{.status.loadBalancer.ingress[0].ip}")"
+    else
+      log_msg "The public IP for Ingress app is ${INGRESS_PUBLIC_IP// /}"
+      break
+    fi
+  done
+  [[ ${PUBLIC_IP_RETRIES} -le 0 ]] && error_exit "Don't have public IP for ingress"
+}
+
+function deploy_retries() {
+  declare -i   RESOLVE_IP_RETRIES=10
+  while ((RESOLVE_IP_RETRIES--)); do
+    log_msg "Trying to resolve ${service}.lozanomatheus.com"
+    dig ${service}.lozanomatheus.com | awk '/^'"${service// /}"'.lozanomatheus.com/ && /'"${INGRESS_PUBLIC_IP// /}"'/ {print; err = 1} END {exit !err}'
+    [[ $? -eq 0 ]] && break
+    sleep 60s
+  done
+  [[ ${RESOLVE_IP_RETRIES} -le 0 ]] && error_exit "The domain ${service}.lozanomatheus.com is not resolving"
+}
+
+### TODO - Convert it to AWS Route53
+## function deploy_dns_a_records() {
+##   deploy_check_public_ip
+##   declare -i   DNS_ZONES_SIZE=${#DNS_ZONES_NAME[@]}
+##   while ((DNS_ZONES_SIZE--)); do
+##     declare -l service="${DNS_ZONES_NAME[${DNS_ZONES_SIZE}]}"
+##     sed -i '' -e "s/.*\([0-9]\{1,3\}\.\)\{3\}[0-9]\{1,3\}.*/- ${INGRESS_PUBLIC_IP}/g" "${CONFIG_DIR}/dns_a_record_${service}.yaml"
+##     gcloud dns record-sets import --delete-all-existing --zone "${service}" "${CONFIG_DIR}/dns_a_record_${service}.yaml"
+##     deploy_retries
+##   done
+## }
+
+function deploy_joomla() {
+  log_msg "Generating Joomla secret"
+  JOOMLA_SECRET="$(head -n 1 /dev/urandom | base64 | tr -dc '[:alnum:]' | cut -c -24)"
+  log_msg "Your JOOMLA_SECRET is: \"${JOOMLA_SECRET}\""
+  log_msg "Deploying Joomla"
+  sleep 30s ; helm install --name joomla stable/joomla \
+    --set joomlaPassword=${JOOMLA_SECRET} \
+    --set mariadb.rootUser.password=${JOOMLA_SECRET} \
+    --set service.type=ClusterIP \
+    --set ingress.enabled=true \
+    --set ingress.certManager=true \
+    --set ingress.hosts[0].tls=true \
+    --set ingress.hosts[0].certManager=true \
+    --set ingress.hosts[0].tlsSecret=joomla-tls \
+    --set ingress.hosts[0].name=joomla.lozanomatheus.com
+  [[ $? -eq 0 ]] && log_msg "Joomla deployed with success" || error_exit "Fail to deploy Joomla"
+  sleep 15s ; kubectl -n default autoscale deployment joomla --cpu-percent=${POD_CPU_PERCENT} --min=${JOOMLA_MIN_PODS} --max=${JOOMLA_MAX_PODS}
+}
+
+function deploy_k8s_dashboard() {
+  log_msg "Deploying Kubernetes Dashboard"
+  sleep 30s ; helm install --name k8s-dashboard stable/kubernetes-dashboard \
+    --set resources.limits.cpu=200m \
+    --set service.type=ClusterIP \
+    --set service.externalPort=443 \
+    --set ingress.enabled=true \
+    --set ingress.annotations."kubernetes\.io/ingress\.class"="nginx" \
+    --set-string ingress.annotations."kubernetes\.io/tls-acme"="true" \
+    --set-string ingress.annotations."nginx\.ingress\.kubernetes\.io/secure-backends"="true" \
+    --set ingress.annotations."nginx\.ingress\.kubernetes\.io/backend-protocol"="HTTPS" \
+    --set ingress.hosts[0]=k8s-dashboard.lozanomatheus.com \
+    --set ingress.tls[0].secretName=k8s-tls \
+    --set ingress.tls[0].hosts[0]=k8s-dashboard.lozanomatheus.com \
+    --set rbac.create=true \
+    --namespace=kube-system
+  [[ $? -eq 0 ]] && log_msg "Kubernetes Dashboard deployed with success" || error_exit "Fail to deploy Kubernetes Dashboard"
+  sleep 15s ; kubectl -n kube-system autoscale deployment k8s-dashboard-kubernetes-dashboard --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
+}
+
+function deploy_autoscaler() {
+  log_msg "Deploying Autoscaler"
+  helm install stable/cluster-autoscaler --name cluster-autoscaler \
+    --namespace kube-system \
+    --set cloudProvider=aws \
+    --set "awsRegion=${AWS_REGION}" \
+    --set autoDiscovery.clusterName=${CLUSTER_NAME}
+  [[ $? -eq 0 ]] && log_msg "Autoscaler deployed with success" || error_exit "Fail to deploy Autoscaler"
+}
