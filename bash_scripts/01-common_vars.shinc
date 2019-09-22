@@ -1,0 +1,20 @@
+declare -xr PROJECT_BASEDIR="$(realpath "${0}" | xargs dirname)"
+declare -xr CONFIG_DIR="${PROJECT_BASEDIR}/config_files"
+declare -r  TERRAFORM_VERSION="${TERRAFORM_VERSION:-'0.12.4'}"
+declare -r  AWS_SHARED_CREDENTIALS_FILE=${AWS_SHARED_CREDENTIALS_FILE:-~/.aws/credentials}
+declare -r  LOG_FILE="/tmp/${0//.sh/}_$(date +'%Y%m%d').log"
+declare -rl KERNEL_NAME="$(uname -s)"
+declare -xr AWS_REGION="${AWS_REGION:-"eu-west-2"}"
+declare -xr CLUSTER_NAME="${CLUSTER_NAME:-"mlozano-eks-cluster"}"
+declare -xr TF_VAR_my_public_ip="${MY_PUBLIC_IP:-"$(curl -s ifconfig.co)"}"
+declare -xr TF_VAR_ssh_key_name="${SSH_KEY_NAME:-"ssh_key_eks_workers"}"
+declare -xr TF_VAR_ssh_key_path="${SSH_KEY_PATH:-"${PROJECT_BASEDIR}/keys"}"
+declare -xr TF_VAR_instance_type="${INSTANCE_TYPE:-"t3.xlarge"}"
+declare -ir RETRIES=10
+
+## Pod Autoscaler
+declare -ir POD_CPU_PERCENT="${POD_CPU_PERCENT:-"60"}"
+declare -ir MIN_PODS="${MIN_PODS:-"2"}"
+declare -ir MAX_PODS="${MAX_PODS:-"5"}"
+declare -ir JOOMLA_MIN_PODS="${JOOMLA_MIN_PODS:-"1"}"
+declare -ir JOOMLA_MAX_PODS="${JOOMLA_MAX_PODS:-"3"}"
