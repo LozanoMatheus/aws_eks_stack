@@ -36,7 +36,7 @@ function terraform_clean() {
 
 function terraform_destroy() {
   log_msg "Destroying AWS EKS Stack"
-  local -r CHECK_HELM_RELEASE="$(helm list -q | wc -l)"
+  local -r CHECK_HELM_RELEASE="$(helm list -q 2> /dev/null | wc -l)"
   if [[ "${CHECK_HELM_RELEASE// /}" -ne 0 ]]; then
     log_msg "Deleting all HELM release"
     helm delete --purge $(helm list -q) || error_exit "Fail to delete helm release"
