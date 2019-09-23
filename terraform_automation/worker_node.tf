@@ -47,8 +47,8 @@ POLICY
 }
 
 resource "aws_iam_role_policy_attachment" "helm-autoscaler" {
-  role       = "${aws_iam_role.demo-node.name}"
   policy_arn = "${aws_iam_policy.helm-autoscaler.arn}"
+  role       = "${aws_iam_role.demo-node.name}"
 }
 
 resource "aws_iam_role_policy_attachment" "demo-node-AmazonEKSWorkerNodePolicy" {
@@ -67,7 +67,7 @@ resource "aws_iam_role_policy_attachment" "demo-node-AmazonEC2ContainerRegistryR
 }
 
 resource "aws_iam_instance_profile" "demo-node" {
-  name = "${var.cluster_name}"
+  name = "${var.cluster_name}-ec2-profile"
   role = "${aws_iam_role.demo-node.name}"
 }
 
