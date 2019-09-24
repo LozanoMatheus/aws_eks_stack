@@ -17,6 +17,7 @@ resource "aws_iam_policy" "helm-autoscaler" {
             "Action": [
                 "autoscaling:DescribeAutoScalingGroups",
                 "autoscaling:DescribeAutoScalingInstances",
+                "autoscaling:DescribeLaunchConfigurations",
                 "autoscaling:SetDesiredCapacity",
                 "autoscaling:TerminateInstanceInAutoScalingGroup",
                 "autoscaling:DescribeTags"
@@ -169,6 +170,7 @@ resource "aws_autoscaling_group" "eks" {
   min_size = 1
   name = "${var.cluster_name}"
   vpc_zone_identifier = "${aws_subnet.eks.*.id}"
+  enabled_metrics = ["GroupTerminatingInstances", "GroupStandbyInstances", "GroupMaxSize", "GroupDesiredCapacity", "GroupPendingInstances", "GroupInServiceInstances", "GroupMinSize", "GroupTotalInstances"]
 
   tag {
     key = "Name"
