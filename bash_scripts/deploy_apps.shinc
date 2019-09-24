@@ -113,10 +113,14 @@ function deploy_k8s_dashboard() {
 
 function deploy_autoscaler() {
   log_msg "Deploying Autoscaler"
-  helm install stable/cluster-autoscaler --name cluster-autoscaler \
+  sleep 30s ; helm install --name cluster-autoscaler stable/cluster-autoscaler \
     --namespace kube-system \
+    --set autoDiscovery.clusterName=${CLUSTER_NAME} \
+    --set autoDiscovery.enabled=true \
     --set cloudProvider=aws \
+    --set extraArgs.balance-similar-node-groups=false \
+    --set extraArgs.expander=random \
     --set "awsRegion=${AWS_REGION}" \
-    --set autoDiscovery.clusterName=${CLUSTER_NAME}
+    --set rbac.create=true
   [[ $? -eq 0 ]] && log_msg "Autoscaler deployed with success" || error_exit "Fail to deploy Autoscaler"
 }
