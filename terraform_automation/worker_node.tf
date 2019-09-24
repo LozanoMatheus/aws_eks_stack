@@ -18,7 +18,8 @@ resource "aws_iam_policy" "helm-autoscaler" {
                 "autoscaling:DescribeAutoScalingGroups",
                 "autoscaling:DescribeAutoScalingInstances",
                 "autoscaling:SetDesiredCapacity",
-                "autoscaling:TerminateInstanceInAutoScalingGroup"
+                "autoscaling:TerminateInstanceInAutoScalingGroup",
+                "autoscaling:DescribeTags"
             ],
             "Resource": "*"
         }
