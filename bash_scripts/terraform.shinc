@@ -31,6 +31,7 @@ function terraform_deploy() {
 function terraform_clean() {
   log_msg "Cleaning all terraform files"
   rm -rf .terraform *.tfstate{,.backup}
+  [[ ! -z "${TF_VAR_ssh_key_path// /}" ]] && rm -rf ${TF_VAR_ssh_key_path}/${TF_VAR_ssh_key_name}*
   [[ $? -ne 0 ]] && error_exit "Fail to delete terraform files" || true
 }
 
