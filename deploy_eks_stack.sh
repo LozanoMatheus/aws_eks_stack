@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -o allexport
-
 for i in bash_scripts/*.shinc ; do
   . "${i}"
 done
