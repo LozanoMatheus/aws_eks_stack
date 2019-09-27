@@ -7,6 +7,8 @@ resource "aws_vpc" "eks" {
     map(
       "Name", "${var.cluster_name}-node",
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
+      "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
+      "k8s.io/cluster-autoscaler/enabled", "true",
     )
   }"
 }
@@ -22,6 +24,8 @@ resource "aws_subnet" "eks" {
     map(
       "Name", "${var.cluster_name}-node",
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
+      "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
+      "k8s.io/cluster-autoscaler/enabled", "true",
     )
   }"
 }
@@ -29,9 +33,14 @@ resource "aws_subnet" "eks" {
 resource "aws_internet_gateway" "eks" {
   vpc_id = "${aws_vpc.eks.id}"
 
-  tags = {
-    Name = "${var.cluster_name}"
-  }
+  tags = "${
+    map(
+      "Name", "${var.cluster_name}",
+      "kubernetes.io/cluster/${var.cluster_name}", "shared",
+      "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
+      "k8s.io/cluster-autoscaler/enabled", "true",
+    )
+  }"
 }
 
 resource "aws_route_table" "eks" {
@@ -91,9 +100,14 @@ resource "aws_security_group" "eks-cluster" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "${var.cluster_name}"
-  }
+  tags = "${
+    map(
+      "Name", "${var.cluster_name}",
+      "kubernetes.io/cluster/${var.cluster_name}", "shared",
+      "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
+      "k8s.io/cluster-autoscaler/enabled", "true",
+    )
+  }"
 }
 
 # OPTIONAL: Allow inbound traffic from your local workstation external IP

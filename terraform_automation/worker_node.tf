@@ -89,6 +89,8 @@ resource "aws_security_group" "eks-node" {
     map(
      "Name", "${var.cluster_name}-node",
      "kubernetes.io/cluster/${var.cluster_name}", "owned",
+     "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
+     "k8s.io/cluster-autoscaler/enabled", "true",
     )
   }"
 }
@@ -166,7 +168,7 @@ resource "aws_launch_configuration" "eks" {
 resource "aws_autoscaling_group" "eks" {
   desired_capacity = 2
   launch_configuration = "${aws_launch_configuration.eks.id}"
-  max_size = 2
+  max_size = 10
   min_size = 1
   name = "${var.cluster_name}"
   vpc_zone_identifier = "${aws_subnet.eks.*.id}"
@@ -175,6 +177,18 @@ resource "aws_autoscaling_group" "eks" {
   tag {
     key = "Name"
     value = "${var.cluster_name}"
+    propagate_at_launch = true
+  }
+
+  tag {
+    key = "k8s.io/cluster-autoscaler/enabled"
+    value = "true"
+    propagate_at_launch = true
+  }
+
+  tag {
+    key = "k8s.io/cluster-autoscaler/${var.cluster_name}"
+    value = "true"
     propagate_at_launch = true
   }
 
