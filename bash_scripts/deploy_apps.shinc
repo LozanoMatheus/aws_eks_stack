@@ -1,21 +1,39 @@
 function deploy_apps() {
-  [[ ! -z ${@} ]] && { echo "${@}" | xargs -I{} -n1 bash -c "deploy_{}" ; return ; }
+  [[ ! -z "${@}" ]] && { for i in ${@}; do deploy_${i} ; done ; return ; }
+  deploy_autoscaler
   deploy_letsencrypt
   deploy_ingress
   # deploy_dns_a_records ## TODO - Convert it to AWS Route53
   deploy_joomla
   deploy_k8s_dashboard
-  deploy_autoscaler
+}
+
+function deploy_autoscaler() {
+  log_msg "Deploying Autoscaler"
+  helm install --name cluster-autoscaler stable/cluster-autoscaler \
+    --namespace kube-system \
+    --set autoDiscovery.clusterName=${CLUSTER_NAME} \
+    --set autoDiscovery.enabled=true \
+    --set cloudProvider=aws \
+    --set extraArgs.balance-similar-node-groups=false \
+    --set extraArgs.expander=random \
+    --set replicaCount=2 \
+    --set "awsRegion=${AWS_REGION}" \
+    --set rbac.create=true
+  [[ $? -eq 0 ]] && log_msg "Autoscaler deployed with success" || error_exit "Fail to deploy Autoscaler"
 }
 
 function deploy_letsencrypt() {
   log_msg "Deploying Let's Encrypt / Cert Manager"
+  sleep 15s
   helm repo add jetstack https://charts.jetstack.io
   kubectl create namespace cert-manager
   kubectl label namespace cert-manager certmanager.k8s.io/disable-validation=true
   kubectl apply -f https://raw.githubusercontent.com/jetstack/cert-manager/release-0.8/deploy/manifests/00-crds.yaml
   kubectl create -f "${CONFIG_DIR}/letsencrypt-prod.yaml"
-  helm install --name cert-manager --namespace cert-manager --version v0.8.1 jetstack/cert-manager \
+  sleep 30s ; helm install --name cert-manager \
+    --namespace cert-manager \
+    --version v0.8.1 jetstack/cert-manager \
     --set ingressShim.defaultIssuerName=letsencrypt-prod \
     --set ingressShim.defaultIssuerKind=ClusterIssuer
   [[ $? -eq 0 ]] && log_msg "Let's Encrypt / Cert Manager deployed with success" || error_exit "Fail to deploy Let's Encrypt / Cert Manager"
@@ -26,7 +44,7 @@ function deploy_letsencrypt() {
 
 function deploy_ingress() {
   log_msg "Deploying Ingress"
-  helm install --name ingress stable/nginx-ingress
+  sleep 30s ; helm install --name ingress stable/nginx-ingress
   [[ $? -eq 0 ]] && log_msg "Ingress deployed with success" || error_exit "Fail to deploy Ingress"
   sleep 15s ; kubectl -n default autoscale deployment ingress-nginx-ingress-controller      --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
   sleep 15s ; kubectl -n default autoscale deployment ingress-nginx-ingress-default-backend --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
@@ -109,18 +127,4 @@ function deploy_k8s_dashboard() {
     --namespace=kube-system
   [[ $? -eq 0 ]] && log_msg "Kubernetes Dashboard deployed with success" || error_exit "Fail to deploy Kubernetes Dashboard"
   sleep 15s ; kubectl -n kube-system autoscale deployment k8s-dashboard-kubernetes-dashboard --cpu-percent=${POD_CPU_PERCENT} --min=${MIN_PODS} --max=${MAX_PODS}
-}
-
-function deploy_autoscaler() {
-  log_msg "Deploying Autoscaler"
-  sleep 30s ; helm install --name cluster-autoscaler stable/cluster-autoscaler \
-    --namespace kube-system \
-    --set autoDiscovery.clusterName=${CLUSTER_NAME} \
-    --set autoDiscovery.enabled=true \
-    --set cloudProvider=aws \
-    --set extraArgs.balance-similar-node-groups=false \
-    --set extraArgs.expander=random \
-    --set "awsRegion=${AWS_REGION}" \
-    --set rbac.create=true
-  [[ $? -eq 0 ]] && log_msg "Autoscaler deployed with success" || error_exit "Fail to deploy Autoscaler"
 }
