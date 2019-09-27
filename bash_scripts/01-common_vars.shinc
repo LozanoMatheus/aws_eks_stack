@@ -9,7 +9,7 @@ declare -xr CLUSTER_NAME="${CLUSTER_NAME:-"mlozano-eks-cluster"}"
 declare -xr TF_VAR_my_public_ip="${MY_PUBLIC_IP:-"$(curl -s ifconfig.co)"}"
 declare -xr TF_VAR_ssh_key_name="${SSH_KEY_NAME:-"ssh_key_eks_workers"}"
 declare -xr TF_VAR_ssh_key_path="${SSH_KEY_PATH:-"${PROJECT_BASEDIR}/keys"}"
-declare -xr TF_VAR_instance_type="${INSTANCE_TYPE:-"t3.xlarge"}"
+declare -xr TF_VAR_instance_type="${INSTANCE_TYPE:-"t3.small"}"
 declare -ir RETRIES=10
 
 ## Pod Autoscaler
