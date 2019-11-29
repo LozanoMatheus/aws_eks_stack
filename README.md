@@ -34,7 +34,7 @@ To get the token, you can run this command.
 
 ```bash
 my_user=mlozano
-kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | awk '/'"${my_user}"'/ { rc = 1; print $NF }; END { exit !rc }' || echo "user not found")
+kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | awk '/'"${my_user}"'/ { rc = 1; print $1 }; END { exit !rc }' || echo "${my_user}")
 ```
 
 ## Accessing K8s Dashboard
