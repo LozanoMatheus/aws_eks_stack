@@ -1,5 +1,6 @@
 function generate_ssh_key() {
   if [[ ! -f "${TF_VAR_ssh_key_path}/${TF_VAR_ssh_key_name}" ]]; then
+    [[ ! -d ${TF_VAR_ssh_key_path} ]] && mkdir -p ${TF_VAR_ssh_key_path}
     log_msg "Generating your ssh private and public keys"
     local -r SSH_KEY_PASSWORD="$(head -n 1 /dev/urandom | base64 | tr -dc '[:alnum:]' | cut -c -24)"
     ssh-keygen -t rsa -b 1024 -C "AWS EC2 key - EKS Workers" -f "${TF_VAR_ssh_key_path}/${TF_VAR_ssh_key_name}" -N "${SSH_KEY_PASSWORD}"
