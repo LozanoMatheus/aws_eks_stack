@@ -3,60 +3,56 @@ data "aws_availability_zones" "available" {}
 resource "aws_vpc" "eks" {
   cidr_block = "10.0.0.0/16"
 
-  tags = "${
-    map(
+  tags = map(
       "Name", "${var.cluster_name}-node",
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
       "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
       "k8s.io/cluster-autoscaler/enabled", "true",
     )
-  }"
 }
 
 resource "aws_subnet" "eks" {
   count = 2
 
-  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
-  cidr_block        = "10.0.${count.index}.0/24"
-  vpc_id            = "${aws_vpc.eks.id}"
+  map_public_ip_on_launch = true
 
-  tags = "${
-    map(
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+  cidr_block        = "10.0.${count.index}.0/24"
+  vpc_id            = aws_vpc.eks.id
+
+  tags = map(
       "Name", "${var.cluster_name}-node",
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
       "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
       "k8s.io/cluster-autoscaler/enabled", "true",
     )
-  }"
 }
 
 resource "aws_internet_gateway" "eks" {
-  vpc_id = "${aws_vpc.eks.id}"
+  vpc_id = aws_vpc.eks.id
 
-  tags = "${
-    map(
-      "Name", "${var.cluster_name}",
+  tags = map(
+      "Name", var.cluster_name,
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
       "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
       "k8s.io/cluster-autoscaler/enabled", "true",
     )
-  }"
 }
 
 resource "aws_route_table" "eks" {
-  vpc_id = "${aws_vpc.eks.id}"
+  vpc_id = aws_vpc.eks.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = "${aws_internet_gateway.eks.id}"
+    gateway_id = aws_internet_gateway.eks.id
   }
 }
 
 resource "aws_route_table_association" "eks" {
   count = 2
 
-  subnet_id      = "${aws_subnet.eks.*.id[count.index]}"
-  route_table_id = "${aws_route_table.eks.id}"
+  subnet_id      = aws_subnet.eks.*.id[count.index]
+  route_table_id = aws_route_table.eks.id
 }
 
 resource "aws_iam_role" "eks-cluster" {
@@ -80,18 +76,18 @@ POLICY
 
 resource "aws_iam_role_policy_attachment" "eks-cluster-AmazonEKSClusterPolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-  role = "${aws_iam_role.eks-cluster.name}"
+  role = aws_iam_role.eks-cluster.name
 }
 
 resource "aws_iam_role_policy_attachment" "eks-cluster-AmazonEKSServicePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
-  role = "${aws_iam_role.eks-cluster.name}"
+  role = aws_iam_role.eks-cluster.name
 }
 
 resource "aws_security_group" "eks-cluster" {
   name = "${var.cluster_name}-cluster"
   description = "Cluster communication with worker nodes"
-  vpc_id = "${aws_vpc.eks.id}"
+  vpc_id = aws_vpc.eks.id
 
   egress {
     from_port = 0
@@ -100,14 +96,12 @@ resource "aws_security_group" "eks-cluster" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = "${
-    map(
-      "Name", "${var.cluster_name}",
+  tags = map(
+      "Name", var.cluster_name,
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
       "k8s.io/cluster-autoscaler/${var.cluster_name}", "true",
       "k8s.io/cluster-autoscaler/enabled", "true",
     )
-  }"
 }
 
 # OPTIONAL: Allow inbound traffic from your local workstation external IP
@@ -118,25 +112,25 @@ resource "aws_security_group_rule" "eks-cluster-ingress-workstation-https" {
   description = "Allow workstation to communicate with the cluster API Server"
   from_port = 443
   protocol = "tcp"
-  security_group_id = "${aws_security_group.eks-cluster.id}"
+  security_group_id = aws_security_group.eks-cluster.id
   to_port = 443
   type = "ingress"
 }
 
 resource "aws_eks_cluster" "eks" {
-  name = "${var.cluster_name}"
-  role_arn = "${aws_iam_role.eks-cluster.arn}"
-  version = "${var.eks_version}"
+  name = var.cluster_name
+  role_arn = aws_iam_role.eks-cluster.arn
+  version = var.eks_version
 
   vpc_config {
-    security_group_ids = ["${aws_security_group.eks-cluster.id}"]
-    subnet_ids = "${aws_subnet.eks.*.id}"
+    security_group_ids = [aws_security_group.eks-cluster.id]
+    subnet_ids = aws_subnet.eks.*.id
   }
 
   depends_on = [
-    "aws_iam_role_policy_attachment.eks-cluster-AmazonEKSClusterPolicy",
-    "aws_iam_role_policy_attachment.eks-cluster-AmazonEKSServicePolicy",
-    "aws_subnet.eks",
+    aws_iam_role_policy_attachment.eks-cluster-AmazonEKSClusterPolicy,
+    aws_iam_role_policy_attachment.eks-cluster-AmazonEKSServicePolicy,
+    aws_subnet.eks,
   ]
 }
 
@@ -170,5 +164,5 @@ KUBECONFIG
 }
 
 output "kubeconfig" {
-  value = "${local.kubeconfig}"
+  value = local.kubeconfig
 }
