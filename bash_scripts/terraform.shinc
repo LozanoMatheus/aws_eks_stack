@@ -38,12 +38,33 @@ function terraform_clean() {
 
 function terraform_destroy() {
   log_msg "Destroying AWS EKS Stack"
-  local -r CHECK_HELM_RELEASE="$(helm list -q 2> /dev/null | wc -l)"
-  if [[ "${CHECK_HELM_RELEASE// /}" -ne 0 ]]; then
-    log_msg "Deleting all HELM release"
-    helm delete --purge $(helm list -q) || error_exit "Fail to delete helm release"
-    sleep 30s
-  fi
+
+  declare -r DELETE_HELM_DEPLOY_QUESTION="Do you want to delete all Helm deployments?
+  1) Skip
+  2) Delete all helm
+  Default: Skip
+  -> "
+  read -ep "${DELETE_HELM_DEPLOY_QUESTION}" delete_helm_deploy_action
+  declare -lr DELETE_HELM_DEPLOY_ACTION="${delete_helm_deploy_action:-"Skip"}"
+
+  case "${DELETE_HELM_DEPLOY_ACTION}" in
+    1|skip)
+      ;;
+    2|"delete all helm")
+      setup_environment
+      local -r CHECK_HELM_RELEASE="$(helm list -q 2> /dev/null | wc -l)"
+      if [[ "${CHECK_HELM_RELEASE// /}" -ne 0 ]]; then
+        log_msg "Deleting all HELM release"
+        helm delete --purge $(helm list -q) || error_exit "Fail to delete helm release"
+        sleep 30s
+      fi
+      ;;
+    *)
+      log_msg "The action \"${DELETE_HELM_DEPLOY}\" is not known"
+      exit
+      ;;
+  esac
+
   terraform destroy -var aws_region=${AWS_REGION} -var cluster_name=${CLUSTER_NAME}
   [[ "${?}" -eq 0 ]] && terraform_clean
 }
